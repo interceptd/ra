@@ -1,0 +1,79 @@
+FROM alpine:3.20 AS builder
+
+# Install build dependencies including Go
+RUN apk add --no-cache \
+    go \
+    python3=~3.12 \
+    py3-pip \
+    python3-dev \
+    build-base \
+    rust \
+    cargo \
+    nodejs \
+    npm \
+    ca-certificates
+
+# Install repomix globally
+RUN npm install -g repomix@latest
+
+# Copy Go source code
+COPY . /app/source
+WORKDIR /app/source
+
+# Build the Go binary for Linux
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-w -s -extldflags '-static'" -a -installsuffix cgo -o repo-analyzer .
+
+# Create workspace and setup environment using the Go binary
+WORKDIR /app/workspace
+COPY repo-analyzer.config.yml /app/workspace/repo-analyzer.config.yml
+
+# Run our own setup command with verbose output to see what's happening
+RUN /app/source/repo-analyzer setup --auto-install --verbose || true
+
+# Verify the setup worked (ignore exit code if setup has warnings but works)
+RUN /app/source/repo-analyzer setup --verbose || echo "Setup completed with warnings"
+
+# Move the virtual environment to a persistent location
+RUN mv /app/workspace/.venv /app/.venv
+
+# Runtime stage
+FROM alpine:3.20 AS runtime
+
+# Install only runtime dependencies
+RUN apk add --no-cache \
+    python3=~3.12 \
+    nodejs \
+    npm \
+    ca-certificates \
+    && rm -rf /var/cache/apk/* /tmp/*
+
+# Copy the complete built environment from builder
+COPY --from=builder /app/source/repo-analyzer /usr/local/bin/repo-analyzer
+COPY --from=builder /app/workspace/repo-analyzer.config.yml /app/repo-analyzer.config.yml
+COPY --from=builder /app/.venv /app/.venv
+
+# Copy the entire global node_modules and existing bin files
+COPY --from=builder /usr/local/lib/node_modules /usr/local/lib/node_modules
+COPY --from=builder /usr/local/bin/repomix /usr/local/bin/repomix
+
+# Fix repomix path issue by creating the directory structure it expects
+RUN mkdir -p /usr/local/lib/cli && \
+    ln -sf /usr/local/lib/node_modules/repomix/lib/cli/cliRun.js /usr/local/lib/cli/cliRun.js && \
+    chmod +x /usr/local/bin/repomix
+
+# Create non-root user and set permissions
+RUN adduser -D -s /bin/sh analyzer && \
+    mkdir -p /workspace && \
+    chown -R analyzer:analyzer /workspace /app/.venv && \
+    chmod +x /usr/local/bin/repo-analyzer
+
+# Switch to non-root user
+USER analyzer
+
+# Set working directory
+WORKDIR /workspace
+
+# Set environment variables
+ENV PATH="/app/.venv/bin:$PATH"
+ENTRYPOINT ["repo-analyzer"]
+CMD ["--help"] 

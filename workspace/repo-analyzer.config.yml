@@ -1,0 +1,240 @@
+# Repository Analyzer Configuration Example
+# Copy this file to repo-analyzer.config.yaml and customize as needed
+
+# Global Settings
+global:
+  verbose: false
+  output_dir: "analysis-results"
+  clean_line_terminators: true # Remove unusual Unicode line separators
+
+# Analysis Command Settings
+analyze:
+  # Which tools to run by default
+  enable_gitingest: true
+  enable_repomix: true
+
+  # Default output directory
+  output_dir: "analysis-results"
+
+  # Default header text for analysis
+  header_text: "Repository Analysis"
+
+# Gitingest Configuration
+gitingest:
+  # Output settings
+  output_dir: "gitingest-output"
+  json_only: false
+
+  # File processing
+  clean_content: true
+
+  # Analysis options
+  include_summary: true
+  include_tree: true
+  include_content: true
+  include_json: true
+
+# Repomix Configuration
+repomix:
+  # Output settings
+  output_dir: "repomix-output"
+  style: "markdown"
+
+  # File summary options
+  include_file_summary: true
+  include_directory_structure: true
+
+  # Content formatting
+  show_line_numbers: true
+  output_parsable_format: true
+
+  # Content processing
+  remove_comments: true
+  remove_empty_lines: true
+
+  # File selection
+  include_patterns: []
+  ignore_patterns: []
+
+  # Summary settings
+  top_files_length: 10
+
+  # Custom text
+  header_text: ""
+
+  # Advanced options
+  output_show_line_numbers: true
+  parsable_style: true
+
+  # Security
+  security_check: true
+
+# File Cleaning Configuration
+file_cleaning:
+  # Remove unusual Unicode line terminators
+  remove_line_separator: true # Remove U+2028 (LS)
+  remove_paragraph_separator: true # Remove U+2029 (PS)
+  remove_zero_width_chars: true # Remove zero-width characters
+  normalize_newlines: true # Convert all newlines to \n
+
+  # Character encoding
+  ensure_utf8: true
+
+# Path Configuration
+paths:
+  # Default paths
+  default_target: "."
+
+  # Global exclusion patterns (applied to both tools)
+  global_ignore:
+    # System files
+    - ".git/**"
+    - ".DS_Store"
+    - "Thumbs.db"
+    - "*.tmp"
+    - "*.temp"
+    - "*.log"
+    - "*.bak"
+    - "*.swp"
+    - "*.swo"
+    - "*~"
+
+    # JavaScript/TypeScript
+    - "node_modules/**"
+    - "dist/**"
+    - "build/**"
+    - ".next/**"
+    - ".nuxt/**"
+    - "coverage/**"
+    - ".nyc_output/**"
+    - "*.tsbuildinfo"
+    - ".eslintcache"
+    - ".env"
+    - ".env.local"
+    - ".env.*.local"
+
+    # Python
+    - "__pycache__/**"
+    - "*.pyc"
+    - "*.pyo"
+    - "*.pyd"
+    - ".Python"
+    - ".venv/**"
+    - "venv/**"
+    - "env/**"
+    - ".pytest_cache/**"
+    - ".coverage"
+    - "*.egg-info/**"
+    - ".tox/**"
+    - ".mypy_cache/**"
+
+    # Java
+    - "*.class"
+    - "*.jar"
+    - "*.war"
+    - "*.ear"
+    - "target/**"
+    - ".gradle/**"
+    - "build/**"
+    - ".settings/**"
+    - ".project"
+    - ".classpath"
+    - "*.iml"
+    - ".idea/**"
+
+    # C#/.NET
+    - "bin/**"
+    - "obj/**"
+    - "*.exe"
+    - "*.dll"
+    - "*.pdb"
+    - "*.cache"
+    - "packages/**"
+    - ".vs/**"
+    - "*.user"
+    - "*.suo"
+
+    # C/C++
+    - "*.o"
+    - "*.so"
+    - "*.dylib"
+    - "*.out"
+    - "*.app"
+    - "*.dSYM/**"
+    - "cmake-build-*/**"
+    - "CMakeCache.txt"
+    - "CMakeFiles/**"
+
+    # Go
+    - "vendor/**"
+    - "*.test"
+
+    # Rust
+    - "target/**"
+    - "Cargo.lock"
+
+    # PHP
+    - "vendor/**"
+    - "composer.lock"
+    - ".phpunit.result.cache"
+
+    # Ruby
+    - "*.gem"
+    - "*.rbc"
+    - ".bundle/**"
+    - "vendor/bundle/**"
+    - "log/*.log"
+    - "tmp/**"
+    - ".rspec"
+
+    # Swift/iOS
+    - ".build/**"
+    - "Packages/**"
+    - "*.xcworkspace"
+    - "*.xcuserstate"
+    - "DerivedData/**"
+    - "*.hmap"
+    - "*.ipa"
+
+    # Additional common patterns
+    - "*.zip"
+    - "*.tar.gz"
+    - "*.rar"
+    - ".env*"
+    - "secrets.*"
+    - "*.key"
+    - "*.pem"
+
+# Output File Naming
+output_naming:
+  # Timestamp format for output files
+  timestamp_format: "20060102_150405"
+
+  # File naming patterns
+  gitingest_summary: "{target}_gitingest_summary_{timestamp}.txt"
+  gitingest_tree: "{target}_gitingest_tree_{timestamp}.txt"
+  gitingest_content: "{target}_gitingest_content_{timestamp}.txt"
+  gitingest_json: "{target}_gitingest_results_{timestamp}.json"
+  repomix_output: "{target}_repomix_{timestamp}.md"
+
+# Advanced Configuration
+advanced:
+  gitingest:
+    # Python virtual environment
+    use_venv: true
+    venv_path: ".venv"
+
+    # Performance limits
+    max_file_size: "10MB"
+    max_total_size: "1GB"
+
+  repomix:
+    # Node.js configuration
+    node_options: []
+
+    # Performance
+    max_workers: 4
+
+    # Output optimization
+    compress_output: false
+    minify_json: false
