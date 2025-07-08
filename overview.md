@@ -6,7 +6,13 @@
 
 This document provides a comprehensive, high-level overview of the architecture of the `interceptd/ra` repository. It covers the main components, overall layering, module responsibilities, key technologies, and patterns. It also highlights areas of interest for onboarding and future maintenance.
 
----
+### 1.1 Run
+
+```
+cd frontend/
+pip install -r requirements.txt
+streamlit run main.py
+```
 
 ## 2. Main Architectural Layers
 
@@ -33,7 +39,7 @@ flowchart TD
   Handles cloning, branch management, and local workspace setup using GitPython.
 - **Code Analysis Layer:**  
   Implements architectural, risk, obsolescence, and migration analyses via command scripts, often leveraging LLMs.
-- **External Integrations:**  
+- **External Integrations:**
   - **Git** for repo cloning and management
   - **Claude** for AI-driven code analysis and report generation
   - **MkDocs** for static site documentation
@@ -42,15 +48,15 @@ flowchart TD
 
 ## 3. Key Modules, Packages, and Directories
 
-| Directory / File           | Purpose / Summary                                                                                  |
-|--------------------------- |---------------------------------------------------------------------------------------------------|
-| `frontend/`                | Main Streamlit app, user workflows, UI logic, and orchestration                                   |
-| `frontend/main.py`         | Core Streamlit app: repo cloning, doc generation, command runner, and markdown viewer             |
-| `frontend/requirements.txt`| Python dependencies, including Streamlit, GitPython, mkdocs, and mermaid support                  |
-| `.claude/commands/`        | Claude prompt scripts for architectural overview, documentation, migration, and risk analysis      |
-| `README.md`                | Visual repo banner; minimal direct documentation                                                  |
-| `commands.md`              | Maps well-known analyses to Claude prompt scripts, enabling UI-driven command selection            |
-| `_ra/` (generated)         | MkDocs site output; contains structured docs, logic, and dependency reports                        |
+| Directory / File            | Purpose / Summary                                                                             |
+| --------------------------- | --------------------------------------------------------------------------------------------- |
+| `frontend/`                 | Main Streamlit app, user workflows, UI logic, and orchestration                               |
+| `frontend/main.py`          | Core Streamlit app: repo cloning, doc generation, command runner, and markdown viewer         |
+| `frontend/requirements.txt` | Python dependencies, including Streamlit, GitPython, mkdocs, and mermaid support              |
+| `.claude/commands/`         | Claude prompt scripts for architectural overview, documentation, migration, and risk analysis |
+| `README.md`                 | Visual repo banner; minimal direct documentation                                              |
+| `commands.md`               | Maps well-known analyses to Claude prompt scripts, enabling UI-driven command selection       |
+| `_ra/` (generated)          | MkDocs site output; contains structured docs, logic, and dependency reports                   |
 
 ---
 
@@ -137,5 +143,4 @@ sequenceDiagram
 
 ---
 
-
-*For a detailed directory-by-directory summary, see the generated MkDocs site or `_ra/docs/index.md` after running the documentation command.*
+_For a detailed directory-by-directory summary, see the generated MkDocs site or `_ra/docs/index.md` after running the documentation command._
