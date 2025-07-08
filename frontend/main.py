@@ -37,11 +37,16 @@ if 'last_analysis_status' not in st.session_state:
 def run_command_in_thread(process, q):
     try:
         for line in iter(process.stdout.readline, ''):
+            # Log the output to the console
+            line_without_newline = line.strip()
+            if line_without_newline:
+                logging.info(line_without_newline)
             q.put(line)
         process.stdout.close()
         return_code = process.wait()
         q.put(f"---RC:{return_code}---")
     except Exception as e:
+        logging.error(f"Error in command thread: {e}")
         q.put(str(e))
         q.put("---RC:1---")
 
@@ -125,30 +130,9 @@ def start_docs_server(repo_path, port):
     except Exception as e:
         st.error(f"An error occurred while setting up the documentation server: {e}")
 
-def stop_analysis():
-    if st.session_state.current_process and st.session_state.current_process.poll() is None:
-        st.warning(f"Stopping analysis process (PID: {st.session_state.current_process.pid})...")
-        try:
-            os.killpg(os.getpgid(st.session_state.current_process.pid), signal.SIGTERM)
-            st.session_state.current_process.wait()
-            logging.info(f"Analysis stopped by user: {st.session_state.selected_command_name_running}")
-            st.success("Analysis stopped.")
-        except ProcessLookupError:
-            st.success("Process was already terminated.")
-        except Exception as e:
-            st.error(f"Error stopping process: {e}")
-
-    # Reset state
-    st.session_state.command_is_running = False
-    st.session_state.current_process = None
-    st.session_state.command_log = ""
-    st.session_state.command_q = None
-
-
 @st.fragment
 def show_analysis_progress():
-    with st.status(f"Running analysis: `{st.session_state.selected_command_name_running}`...", expanded=True) as status:
-        st.button("Stop Analysis", on_click=stop_analysis)
+    with st.status(f"Running analysis: `{st.session_state.selected_command_name_running}` on `{st.session_state.selected_repo}`...", expanded=True) as status:
         log_placeholder = st.empty()
 
         # Loop to update the log
@@ -202,10 +186,10 @@ if st.session_state.get('selected_repo'):
 # --- Tabs ---
 tab_options = ["Repository"]
 if st.session_state.get('selected_repo'):
-    tab_options.extend(["Run Analysis", "Reports"])
+    tab_options.extend(["Analysis", "Results"])
 
 # If a command is running, we might want to default to the Analysis tab
-default_tab = "Run Analysis" if st.session_state.get('command_is_running') else "Repository"
+default_tab = "Analysis" if st.session_state.get('command_is_running') else "Repository"
 selected_tab = ui.tabs(options=tab_options, default_value=default_tab)
 
 
@@ -298,7 +282,7 @@ if selected_tab == "Repository":
         st.warning("The 'workspace' directory does not exist.")
 
 
-elif selected_tab == "Run Analysis":
+elif selected_tab == "Analysis":
     selected_repo = st.session_state.get('selected_repo')
 
     if st.session_state.get('last_analysis_status'):
@@ -336,26 +320,27 @@ elif selected_tab == "Run Analysis":
         if not command_map:
             st.warning("No valid commands found in commands.md.")
         else:
-            selected_command_name = st.selectbox("Select an analysis to run", list(command_map.keys()))
-            run_button = st.button("Run Analysis", disabled=st.session_state.get('command_is_running', False))
+            # Hide controls when a command is running
+            if not st.session_state.get('command_is_running'):
+                selected_command_name = st.selectbox("Select an analysis to run", list(command_map.keys()))
+                run_button = st.button("Run Analysis")
 
-            # Check if docs server is already running for this repo
-            repo_port = st.session_state.repo_ports.get(repo_path)
-            if repo_port and repo_port in st.session_state.running_servers and st.session_state.running_servers[repo_port].poll() is None:
-                st.success("Documentation server is running.")
-                _, col, _ = st.columns([1, 2, 1])
-                with col:
-                    st.link_button("View Documentation", url=f"http://localhost:{repo_port}", use_container_width=True)
+                # Check if docs server is already running for this repo
+                repo_port = st.session_state.repo_ports.get(repo_path)
+                if repo_port and repo_port in st.session_state.running_servers and st.session_state.running_servers[repo_port].poll() is None:
+                    st.success("Documentation server is running.")
+                    _, col, _ = st.columns([1, 2, 1])
+                    with col:
+                        st.link_button("View Documentation", url=f"http://localhost:{repo_port}", use_container_width=True)
 
-            if run_button and selected_command_name:
-                if not st.session_state.get('command_is_running'):
+                if run_button and selected_command_name:
                     command_to_run, output_file = command_map[selected_command_name]
 
                     should_run_command = True
                     if output_file:
                         report_file_path = os.path.join(repo_path, output_file)
                         if os.path.exists(report_file_path):
-                            st.info(f"Report already exists for this repository. Analysis not required. Check the Reports tab.")
+                            st.info(f"Report '{output_file}' already exists for this repository. Analysis not required.")
                             should_run_command = False
                     
                     if should_run_command:
@@ -363,7 +348,7 @@ elif selected_tab == "Run Analysis":
 
                         # --- Start command execution state ---
                         st.session_state.command_is_running = True
-                        st.session_state.command_log = f"$"
+                        st.session_state.command_log = f"$ Go get a coffee while the sentient toasters work their magic"
                         st.session_state.command_q = queue.Queue()
                         st.session_state.command_return_code = None
                         st.session_state.selected_command_name_running = selected_command_name
@@ -404,9 +389,8 @@ elif selected_tab == "Run Analysis":
                             thread.daemon = True
                             thread.start()
                             st.session_state.command_thread = thread
-                    
-                    # No longer need to rerun here, a fragment will handle updates
-                    # st.rerun()
+                        
+                        st.rerun()
 
         # This block will now handle rendering the logs for a running command
         if st.session_state.get('command_is_running'):
@@ -415,7 +399,7 @@ elif selected_tab == "Run Analysis":
     else:
         st.info("Please select a repository first.")
 
-elif selected_tab == "Reports":
+elif selected_tab == "Results":
     selected_repo = st.session_state.get('selected_repo')
     if selected_repo:
         repo_path = os.path.join("../workspace", selected_repo)
