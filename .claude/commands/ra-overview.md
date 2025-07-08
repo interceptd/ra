@@ -1,4 +1,4 @@
-As a Principal Software Architect, your task is to analyze the provided codebase in $ARGUMENTS and generate a high-level architectural overview for the project , use the mcp context7 for any documentation assistance. Create mermaidjs diagrams to detail functions and modules. Identify and create business logic summaries, function/method descriptions, and dependency mappings.
+As a Principal Software Architect, your task is to analyze the provided codebase in $ARGUMENTS and generate a high-level architectural overview for the project. Write the report in synthax perfect Markdown, create mermaidjs diagrams to detail functions and modules. Identify and create business logic summaries, function/method descriptions, and dependency mappings.
 
 • Identify the main architectural layers and how they interact  
 • List key modules, packages, or directories with detailed summaries  
