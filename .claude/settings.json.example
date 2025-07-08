@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Write"
+    ],
+    "deny": [
+      "Bash(rm)"
+    ]
+  },
+  "env": {
+    "CLAUDE_CODE_ENABLE_TELEMETRY": "0",
+    "ANTHROPIC_API_KEY": ""
+  }
+}
