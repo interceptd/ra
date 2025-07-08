@@ -1,4 +1,5 @@
 streamlit
 GitPython
 streamlit-mermaid
-mkdocs 
+mkdocs
+streamlit-shadcn-ui 

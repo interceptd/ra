@@ -1,6 +1,6 @@
 As a Senior Technical Writer, your task is to create concise reference functional documentation in MkDocs for the provided project in $ARGUMENTS
 
-Use the architectural blueprint in @$ARGUMENTS/ra-overview.md as guide for your documentation.
+Use the architectural blueprint in @$ARGUMENTSra-overview.md as guide for your documentation.
 
 • Directory-by-directory summary (≤ 25 words each)  
 • Table: { fully-qualified-name | short description | key inputs | key outputs } for every top-level function/method  
