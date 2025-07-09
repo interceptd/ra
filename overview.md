@@ -9,6 +9,9 @@ This document provides a comprehensive, high-level overview of the architecture 
 ### 1.1 Run
 
 ```
+npm install -g @anthropic-ai/claude-code
+cp .claude/settings.json.example settings.json
+<set up api key and endpoint>
 cd frontend/
 pip install -r requirements.txt
 streamlit run main.py

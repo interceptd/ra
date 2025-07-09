@@ -13,6 +13,15 @@ import random
 import streamlit_shadcn_ui as ui
 import logging
 
+
+
+st.set_page_config(
+    page_title="DORA",  # This is the browser tab title
+    page_icon="",                # Optional: emoji or URL to favicon
+    layout="centered"                  # Optional: 'centered' or 'wide'
+)
+
+
 # --- Logging Configuration ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -32,6 +41,7 @@ if 'current_process' not in st.session_state:
     st.session_state.current_process = None
 if 'last_analysis_status' not in st.session_state:
     st.session_state.last_analysis_status = None
+
 
 
 def run_command_in_thread(process, q):
@@ -178,7 +188,8 @@ def show_analysis_progress():
             else:
                 time.sleep(1) # The fragment will re-run itself, not the whole app
 
-st.title("RA")
+st.title("DORA")
+st.caption("Documentation, Obsolescence, Risk and Architecture Assistant")
 
 if st.session_state.get('selected_repo'):
     st.caption(f"Selected Repository: `{st.session_state.get('selected_repo')}`")
@@ -188,8 +199,14 @@ tab_options = ["Repository"]
 if st.session_state.get('selected_repo'):
     tab_options.extend(["Analysis", "Results"])
 
-# If a command is running, we might want to default to the Analysis tab
-default_tab = "Analysis" if st.session_state.get('command_is_running') else "Repository"
+# Determine default tab
+if st.session_state.get('command_is_running'):
+    # Command is running, default to Analysis tab
+    default_tab = "Analysis"
+else:
+    # Default to Repository
+    default_tab = "Repository"
+
 selected_tab = ui.tabs(options=tab_options, default_value=default_tab)
 
 
@@ -348,7 +365,7 @@ elif selected_tab == "Analysis":
 
                         # --- Start command execution state ---
                         st.session_state.command_is_running = True
-                        st.session_state.command_log = f"$ Go get a coffee while the sentient toasters work their magic"
+                        st.session_state.command_log = f"$ Go get a coffee while the sentient toasters work their magic\n"
                         st.session_state.command_q = queue.Queue()
                         st.session_state.command_return_code = None
                         st.session_state.selected_command_name_running = selected_command_name
@@ -389,8 +406,6 @@ elif selected_tab == "Analysis":
                             thread.daemon = True
                             thread.start()
                             st.session_state.command_thread = thread
-                        
-                        st.rerun()
 
         # This block will now handle rendering the logs for a running command
         if st.session_state.get('command_is_running'):
@@ -404,25 +419,37 @@ elif selected_tab == "Results":
     if selected_repo:
         repo_path = os.path.join("../workspace", selected_repo)
         
-        # --- Display Risk SVG if it exists ---
-        risk_svg_path = os.path.join(repo_path, 'ra-risk.svg')
-        if os.path.exists(risk_svg_path):
-            with open(risk_svg_path, "r") as f:
-                svg_content = f.read()
-            st.markdown(f"## Risk Graph")
-            st.markdown(f'<div style="text-align: center;">{svg_content}</div>', unsafe_allow_html=True)
+        # # --- Display Risk SVG if it exists ---
+        # risk_svg_path = os.path.join(repo_path, 'ra-risk.svg')
+        # if os.path.exists(risk_svg_path):
+        #     with open(risk_svg_path, "r") as f:
+        #         svg_content = f.read()
+        #     st.markdown(f"## Risk Graph")
+        #     st.markdown(f'<div style="text-align: center;">{svg_content}</div>', unsafe_allow_html=True)
 
         # --- View Markdown Files ---
         st.header("View Generated Reports")
         
-        allowed_md_files = ["ra-overview.md", "ra-obsolescence.md", "ra-migrate.md", "ra-security.md"]
+        allowed_md_files = ["ra-overview.md", "ra-obsolescence.md", "ra-security.md", "ra-migrate.md","ra-risk.md"]
+        
+        report_names = ["Architecture Overview", "Obsolescence Risk Assessment", "Security Assessment","Cross-Language Migration","Risk Graph"]
+        
+        # Create mapping between report names and filenames
+        file_to_report_map = dict(zip(allowed_md_files, report_names))
+        report_to_file_map = dict(zip(report_names, allowed_md_files))
+        
         md_files = [f for f in os.listdir(repo_path) if f in allowed_md_files]
         
         if not md_files:
             st.info("No designated markdown files found in the root of this repository.")
         else:
-            selected_md_file = st.selectbox("Select a markdown file to view", md_files)
-            if selected_md_file:
+            # Get available report names for files that actually exist
+            available_report_names = [file_to_report_map[f] for f in md_files]
+            
+            selected_report_name = st.selectbox("Select a report to view", available_report_names)
+            if selected_report_name:
+                # Map the selected report name back to the actual filename
+                selected_md_file = report_to_file_map[selected_report_name]
                 md_path = os.path.join(repo_path, selected_md_file)
                 try:
                     with open(md_path, 'r', encoding='utf-8') as f:
