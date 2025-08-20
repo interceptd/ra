@@ -228,6 +228,7 @@ if selected_tab == "Repository":
 
         branch_name = st.text_input("Branch (optional)")
         pat_token = st.text_input("Azure DevOps PAT (optional)", type="password")
+        proxy_url = st.text_input("Proxy URL (optional)")
 
         clone_button = st.button("Clone")
 
@@ -249,6 +250,10 @@ if selected_tab == "Repository":
                 if os.path.isdir(clone_path):
                     st.warning(f"Directory {clone_path} already exists. Skipping clone.")
                 else:
+                    if proxy_url:
+                        os.system(f"git config --global http.proxy {proxy_url}")
+                        os.system(f"git config --global https.proxy {proxy_url}")
+                        st.info(f"Using proxy: {proxy_url}")
                     with st.spinner(f"Cloning repository from {clone_url}..."):
                         kwargs = {}
                         if branch_name:
