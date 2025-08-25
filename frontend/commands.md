@@ -4,3 +4,4 @@
    3.1 Risk Graph,claude -p "/ra-risk $REPOSITORY" --dangerously-skip-permissions,ra-risk.md
 4. Security Assessment,claude -p "/ra-pentest $REPOSITORY" --dangerously-skip-permissions,ra-security.md
 5. Cross-Language Migration,claude -p "/ra-migrate $REPOSITORY" --dangerously-skip-permissions,ra-migrate.md
+6. Product Functional Requirements,claude -p "/usecase-functional-requirements $USE_CASE" --dangerously-skip-permissions,functional-requirements.md
