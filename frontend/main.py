@@ -42,6 +42,12 @@ if 'current_process' not in st.session_state:
 if 'last_analysis_status' not in st.session_state:
     st.session_state.last_analysis_status = None
 
+# --- Product Use Case Session State Initialization ---
+if 'selected_use_case_index' not in st.session_state:
+    st.session_state.selected_use_case_index = 0
+if 'selected_use_case' not in st.session_state:
+    st.session_state.selected_use_case = None
+
 
 
 def run_command_in_thread(process, q):
@@ -142,7 +148,24 @@ def start_docs_server(repo_path, port):
 
 @st.fragment
 def show_analysis_progress():
-    with st.status(f"Running analysis: `{st.session_state.selected_command_name_running}` on `{st.session_state.selected_repo}`...", expanded=True) as status:
+    # Determine what entity is being analyzed (repo or use case)
+    target_entity = st.session_state.get('target_entity_running')
+    if not target_entity:
+        # Fallback: infer from repo_path_running
+        inferred = None
+        try:
+            running_path = st.session_state.get('repo_path_running')
+            if running_path:
+                base = os.path.basename(os.path.normpath(running_path))
+                if os.path.isfile(os.path.join(running_path, 'usecase.md')):
+                    inferred = f"use case: {base}"
+                else:
+                    inferred = f"repo: {base}"
+        except Exception:
+            inferred = None
+        target_entity = inferred or st.session_state.get('selected_use_case') or st.session_state.get('selected_repo') or "(unknown)"
+
+    with st.status(f"Running analysis: `{st.session_state.selected_command_name_running}` on `{target_entity}`...", expanded=True) as status:
         log_placeholder = st.empty()
 
         # Loop to update the log
@@ -184,6 +207,7 @@ def show_analysis_progress():
                 
                 # Rerun one last time to clear the spinner
                 st.session_state.current_process = None
+                st.session_state.target_entity_running = None
                 
             else:
                 time.sleep(1) # The fragment will re-run itself, not the whole app
@@ -191,207 +215,421 @@ def show_analysis_progress():
 st.title("DORA")
 st.caption("Documentation, Obsolescence, Risk and Architecture Assistant")
 
-if st.session_state.get('selected_repo'):
-    st.caption(f"Selected Repository: `{st.session_state.get('selected_repo')}`")
 
-# --- Tabs ---
-tab_options = ["Repository"]
-if st.session_state.get('selected_repo'):
-    tab_options.extend(["Analysis", "Results"])
+analysis_type = st.radio(
+    "Choose analysis type:",
+    ("Repo Analysis", "Product Use Case Analysis")
+)
 
-# Determine default tab
-if st.session_state.get('command_is_running'):
-    # Command is running, default to Analysis tab
-    default_tab = "Analysis"
+if analysis_type == "Repo Analysis":
+    st.header("Repo Analysis")
+
+    # Mirror Product Use Case Analysis: show selected entity caption before tabs
+    if st.session_state.get('selected_repo'):
+        st.caption(f"Selected Repository: `{st.session_state.get('selected_repo')}`")
+
+    tab_options = ["Repository"]
+    if st.session_state.get('selected_repo'):
+        tab_options.extend(["Analysis", "Results"])
+    # Determine default tab
+    if st.session_state.get('command_is_running'):
+        # Command is running, default to Analysis tab
+        default_tab = "Analysis"
+    else:
+        # Default to Repository
+        default_tab = "Repository"
 else:
-    # Default to Repository
-    default_tab = "Repository"
+    st.header("Product Use Case Analysis")
 
-selected_tab = ui.tabs(options=tab_options, default_value=default_tab)
+    # Mirror Repo Analysis: show selected entity caption before tabs
+    if st.session_state.get('selected_use_case'):
+        st.caption(f"Selected Use Case: `{st.session_state.get('selected_use_case')}`")
 
+    # Tabs for parity with Repo Analysis (only "Use Case" is functional now)
+    uc_tab_options = ["Use Case", "Analysis", "Results"]
+    # Default to Use Case tab
+    uc_default_tab = "Use Case"
+    selected_uc_tab = ui.tabs(options=uc_tab_options, default_value=uc_default_tab)
 
-if selected_tab == "Repository":
-    with st.expander("Clone a new Repository"):
-        clone_method = st.radio("Clone Method", ["From URL", "From Azure DevOps Components"])
+    if selected_uc_tab == "Use Case":
+        with st.expander("Create a new Use Case"):
+            use_case_name = st.text_input(
+                "Use case name (identifier)",
+                placeholder="e.g., checkout-service or product-search",
+                key="uc_name_input"
+            )
+            use_case_desc = st.text_area(
+                "Describe your product use case:",
+                placeholder="Enter a paragraph describing your product or feature...",
+                key="uc_desc_input"
+            )
 
-        repo_url = ""
-        project_name = ""
-        organization_name = ""
+            def _slugify(name: str) -> str:
+                slug = re.sub(r"[^a-zA-Z0-9._-]+", "-", name.strip()).strip("-").lower()
+                return slug or f"usecase-{int(time.time())}"
 
-        if clone_method == "From URL":
-            repo_url = st.text_input("Repository URL")
-        else:
-            organization_name = st.text_input("Organization Name")
-            project_name = st.text_input("Project Name")
-            repo_url = st.text_input("Repository Name")
-
-
-        branch_name = st.text_input("Branch (optional)")
-        pat_token = st.text_input("Azure DevOps PAT (optional)", type="password")
-        proxy_url = st.text_input("Proxy URL (optional)")
-
-        clone_button = st.button("Clone")
-
-        if clone_button and repo_url:
-            try:
-                if clone_method == "From Azure DevOps Components":
-                    repo_name = repo_url
-                    clone_url = f"https://dev.azure.com/{organization_name}/{project_name}/_git/{repo_name}"
+            if st.button("Save Use Case", key="save_use_case_btn"):
+                if not use_case_name.strip() or not use_case_desc.strip():
+                    st.warning("Please provide both a use case name and description.")
                 else:
-                     repo_name = repo_url.split("/")[-1].replace(".git", "")
-                     clone_url = repo_url
+                    slug = _slugify(use_case_name)
+                    uc_dir = os.path.join("../workspace", slug)
+                    os.makedirs(uc_dir, exist_ok=True)
+                    md_path = os.path.join(uc_dir, "usecase.md")
+                    with open(md_path, 'w', encoding='utf-8') as f:
+                        f.write(f"# {use_case_name}\n\n{use_case_desc}\n")
 
-                clone_path = os.path.join("../workspace", repo_name)
-                
-                if pat_token and "dev.azure.com" in clone_url:
-                    clone_url = clone_url.replace("https://", f"https://{pat_token}@")
-                    st.info("Using Personal Access Token for Azure DevOps.")
+                    # Mirror clone flow for use cases: set as selected and index
+                    st.session_state.selected_use_case = slug
+                    try:
+                        entries = [d for d in os.listdir("../workspace") if os.path.isfile(os.path.join("../workspace", d, "usecase.md"))]
+                        if slug in entries:
+                            st.session_state.selected_use_case_index = entries.index(slug)
+                    except Exception:
+                        pass
 
-                if os.path.isdir(clone_path):
-                    st.warning(f"Directory {clone_path} already exists. Skipping clone.")
-                else:
-                    if proxy_url:
-                        os.system(f"git config --global http.proxy {proxy_url}")
-                        os.system(f"git config --global https.proxy {proxy_url}")
-                        st.info(f"Using proxy: {proxy_url}")
-                    with st.spinner(f"Cloning repository from {clone_url}..."):
-                        kwargs = {}
-                        if branch_name:
-                            kwargs['branch'] = branch_name
-                        git.Repo.clone_from(clone_url, clone_path, **kwargs)
-                    st.success(f"Repository cloned successfully into {clone_path}")
-                    
-                    # --- Auto-select the cloned repo ---
-                    cloned_repos_list = [d for d in os.listdir("../workspace") if os.path.isdir(os.path.join("../workspace", d))]
-                    if repo_name in cloned_repos_list:
-                        st.session_state.selected_repo_index = cloned_repos_list.index(repo_name)
+                    st.success(f"Saved use case in: {uc_dir}")
                     st.rerun()
 
+        # --- List Saved Use Cases and Select (always visible) ---
+        st.header("Select the Use Case")
+        workspace_path = "../workspace"
+        if os.path.exists(workspace_path) and os.path.isdir(workspace_path):
+            # A use case is any folder containing a usecase.md file
+            entries = [d for d in os.listdir(workspace_path) if os.path.isdir(os.path.join(workspace_path, d))]
+            saved_use_cases = []
+            for d in entries:
+                if os.path.isfile(os.path.join(workspace_path, d, "usecase.md")):
+                    saved_use_cases.append(d)
 
-            except Exception as e:
-                st.error(f"An error occurred during cloning: {e}")
+            if not saved_use_cases:
+                st.info("No saved use cases found in the workspace directory.")
+            else:
+                def on_uc_change():
+                    st.session_state.selected_use_case = st.session_state.use_case_selector
+                    all_uc = [d for d in os.listdir("../workspace") if os.path.isfile(os.path.join("../workspace", d, "usecase.md"))]
+                    if st.session_state.use_case_selector in all_uc:
+                        st.session_state.selected_use_case_index = all_uc.index(st.session_state.use_case_selector)
 
-    # --- 2. List Cloned Repositories and Run Commands ---
-    st.header("Select the Repository")
-
-    workspace_path = "../workspace"
-    if os.path.exists(workspace_path) and os.path.isdir(workspace_path):
-        cloned_repos = [d for d in os.listdir(workspace_path) if os.path.isdir(os.path.join(workspace_path, d))]
-        
-        if not cloned_repos:
-            st.info("No cloned repositories found in the workspace directory.")
+                uc_index = st.session_state.get('selected_use_case_index', 0)
+                st.selectbox(
+                    "Select a use case",
+                    saved_use_cases,
+                    index=uc_index if uc_index < len(saved_use_cases) else 0,
+                    key="use_case_selector",
+                    on_change=on_uc_change
+                )
+                if 'use_case_selector' in st.session_state:
+                    st.session_state.selected_use_case = st.session_state.use_case_selector
         else:
-            def on_repo_change():
-                st.session_state.selected_repo = st.session_state.repo_selector
-                cloned_repos = [d for d in os.listdir("../workspace") if os.path.isdir(os.path.join("../workspace", d))]
-                if st.session_state.repo_selector in cloned_repos:
-                    st.session_state.selected_repo_index = cloned_repos.index(st.session_state.repo_selector)
+            st.warning("The 'workspace' directory does not exist.")
 
-            # Use the index from session_state, then reset it
-            repo_index = st.session_state.get('selected_repo_index', 0)
-            st.selectbox(
-                "Select a repository",
-                cloned_repos,
-                index=repo_index,
-                key="repo_selector",
-                on_change=on_repo_change
-            )
-            # The script will rerun on change, and the caption will be updated.
-            if 'repo_selector' in st.session_state:
-                 st.session_state.selected_repo = st.session_state.repo_selector
+    elif selected_uc_tab == "Analysis":
+        selected_use_case = st.session_state.get('selected_use_case')
 
-    else:
-        st.warning("The 'workspace' directory does not exist.")
+        if st.session_state.get('last_analysis_status'):
+            status_info = st.session_state.last_analysis_status
+            if status_info['status'] == 'success':
+                st.success(status_info['message'])
+            elif status_info['status'] == 'error':
+                st.error(status_info['message'])
+            st.session_state.last_analysis_status = None
 
+        if selected_use_case:
+            uc_path = os.path.join("../workspace", selected_use_case)
 
-elif selected_tab == "Analysis":
-    selected_repo = st.session_state.get('selected_repo')
+            st.header("Run Analysis")
 
-    if st.session_state.get('last_analysis_status'):
-        status_info = st.session_state.last_analysis_status
-        if status_info['status'] == 'success':
-            st.success(status_info['message'])
-        elif status_info['status'] == 'error':
-            st.error(status_info['message'])
-        st.session_state.last_analysis_status = None # Clear after displaying
+            # Load $USE_CASE commands from commands.md
+            command_map = {}
+            try:
+                with open("commands.md", 'r', encoding='utf-8') as f:
+                    for line in f:
+                        if line.strip():
+                            parts = [p.strip() for p in line.strip().split(',', 2)]
+                            if len(parts) >= 2:
+                                name = parts[0]
+                                command_template = parts[1]
+                                output_file = parts[2] if len(parts) > 2 else None
+                                if "$USE_CASE" in command_template:
+                                    command = command_template.replace("$USE_CASE", f"'$(cat usecase.md)'")
+                                    # We will run in uc_path so relative outputs go there
+                                    command_map[name] = (command, output_file)
+            except FileNotFoundError:
+                command_map["Error"] = ("echo 'commands.md not found'", None)
 
-    if selected_repo:
-        repo_path = os.path.join("../workspace", selected_repo)
+            if not command_map:
+                st.warning("No Product Use Case commands found in commands.md (missing $USE_CASE).")
+            else:
+                if not st.session_state.get('command_is_running'):
+                    selected_command_name = st.selectbox("Select an analysis to run", list(command_map.keys()))
+                    run_button = st.button("Run Analysis")
 
-        # --- New: Command Execution Section ---
-        st.header("Run Analysis")
-        
-        # Load commands from commands.md and replace $REPOSITORY
-        command_map = {}
-        try:
-            with open("commands.md", 'r', encoding='utf-8') as f:
-                relative_repo_path = os.path.join("workspace", selected_repo) + os.sep
-                for line in f:
-                    if line.strip():
-                        parts = [p.strip() for p in line.strip().split(',', 2)]
-                        if len(parts) >= 2:
-                            name = parts[0]
-                            command_template = parts[1]
-                            output_file = parts[2] if len(parts) > 2 else None
-                            command = command_template.replace("$REPOSITORY", relative_repo_path)
-                            command_map[name] = (command, output_file)
+                    if run_button and selected_command_name:
+                        command_to_run, output_file = command_map[selected_command_name]
 
-        except FileNotFoundError:
-            command_map["Error"] = ("echo 'commands.md not found'", None)
-        
-        if not command_map:
-            st.warning("No valid commands found in commands.md.")
+                        should_run_command = True
+                        if output_file:
+                            report_file_path = os.path.join(uc_path, output_file)
+                            if os.path.exists(report_file_path):
+                                st.info(f"Report '{output_file}' already exists for this use case. Analysis not required.")
+                                should_run_command = False
+
+                        if should_run_command:
+                            logging.info(f"Starting use-case analysis: {selected_command_name} on use case: {selected_use_case}")
+
+                            st.session_state.command_is_running = True
+                            st.session_state.command_log = f"$ Go get a coffee while the sentient toasters work their magic\n"
+                            st.session_state.command_q = queue.Queue()
+                            st.session_state.command_return_code = None
+                            st.session_state.selected_command_name_running = selected_command_name
+                            st.session_state.repo_path_running = uc_path
+                            st.session_state.target_entity_running = st.session_state.get('selected_use_case')
+
+                            process = subprocess.Popen(
+                                command_to_run, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                text=True, cwd=uc_path, bufsize=1, universal_newlines=True, preexec_fn=os.setsid
+                            )
+                            st.session_state.current_process = process
+                            thread = threading.Thread(target=run_command_in_thread, args=(process, st.session_state.command_q))
+                            thread.daemon = True
+                            thread.start()
+                            st.session_state.command_thread = thread
+
+            if st.session_state.get('command_is_running'):
+                show_analysis_progress()
         else:
-            # Hide controls when a command is running
-            if not st.session_state.get('command_is_running'):
-                selected_command_name = st.selectbox("Select an analysis to run", list(command_map.keys()))
-                run_button = st.button("Run Analysis")
+            st.info("Please select a use case first (Use Case tab).")
 
-                # Check if docs server is already running for this repo
-                repo_port = st.session_state.repo_ports.get(repo_path)
-                if repo_port and repo_port in st.session_state.running_servers and st.session_state.running_servers[repo_port].poll() is None:
-                    st.success("Documentation server is running.")
-                    _, col, _ = st.columns([1, 2, 1])
-                    with col:
-                        st.link_button("View Documentation", url=f"http://localhost:{repo_port}", use_container_width=True)
+    elif selected_uc_tab == "Results":
+        selected_use_case = st.session_state.get('selected_use_case')
+        if selected_use_case:
+            uc_path = os.path.join("../workspace", selected_use_case)
+            st.header("View Use Case Reports")
 
-                if run_button and selected_command_name:
-                    command_to_run, output_file = command_map[selected_command_name]
+            if not os.path.isdir(uc_path):
+                st.warning("Selected use case directory not found.")
+            else:
+                # Show any .md except the source usecase.md
+                md_files = [f for f in os.listdir(uc_path) if f.endswith('.md') and f != 'usecase.md']
+                if not md_files:
+                    st.info("No generated markdown reports found in this use case folder.")
+                else:
+                    selected_md = st.selectbox("Select a report to view", md_files)
+                    if selected_md:
+                        md_path = os.path.join(uc_path, selected_md)
+                        try:
+                            with open(md_path, 'r', encoding='utf-8') as f:
+                                md_content = f.read()
 
-                    should_run_command = True
-                    if output_file:
-                        report_file_path = os.path.join(repo_path, output_file)
-                        if os.path.exists(report_file_path):
-                            st.info(f"Report '{output_file}' already exists for this repository. Analysis not required.")
-                            should_run_command = False
+                            parts = re.split(r"(```mermaid\n.*?\n```)", md_content, flags=re.DOTALL)
+                            for part in parts:
+                                if part.strip().startswith("```mermaid"):
+                                    mermaid_code = part.strip().replace("```mermaid", "").replace("```", "")
+                                    st_mermaid(mermaid_code)
+                                else:
+                                    st.markdown(part, unsafe_allow_html=True)
+                        except Exception as e:
+                            st.error(f"Error reading markdown file: {e}")
+        else:
+            st.info("Please select a use case first (Use Case tab).")
+
+
+
+# --- Tabs (Repo Analysis only) ---
+if analysis_type == "Repo Analysis":
+    selected_tab = ui.tabs(options=tab_options, default_value=default_tab)
+
+    if selected_tab == "Repository":
+        with st.expander("Clone a new Repository"):
+            clone_method = st.radio("Clone Method", ["From URL", "From Azure DevOps Components"])
+
+            repo_url = ""
+            project_name = ""
+            organization_name = ""
+
+            if clone_method == "From URL":
+                repo_url = st.text_input("Repository URL")
+            else:
+                organization_name = st.text_input("Organization Name")
+                project_name = st.text_input("Project Name")
+                repo_url = st.text_input("Repository Name")
+
+            branch_name = st.text_input("Branch (optional)")
+            pat_token = st.text_input("Azure DevOps PAT (optional)", type="password")
+            proxy_url = st.text_input("Proxy URL (optional)")
+
+            clone_button = st.button("Clone")
+
+            if clone_button and repo_url:
+                try:
+                    if clone_method == "From Azure DevOps Components":
+                        repo_name = repo_url
+                        clone_url = f"https://dev.azure.com/{organization_name}/{project_name}/_git/{repo_name}"
+                    else:
+                        repo_name = repo_url.split("/")[-1].replace(".git", "")
+                        clone_url = repo_url
+
+                    clone_path = os.path.join("../workspace", repo_name)
                     
-                    if should_run_command:
-                        logging.info(f"Starting analysis: {selected_command_name} on repo: {selected_repo}")
+                    if pat_token and "dev.azure.com" in clone_url:
+                        clone_url = clone_url.replace("https://", f"https://{pat_token}@")
+                        st.info("Using Personal Access Token for Azure DevOps.")
 
-                        # --- Start command execution state ---
-                        st.session_state.command_is_running = True
-                        st.session_state.command_log = f"$ Go get a coffee while the sentient toasters work their magic\n"
-                        st.session_state.command_q = queue.Queue()
-                        st.session_state.command_return_code = None
-                        st.session_state.selected_command_name_running = selected_command_name
-                        st.session_state.repo_path_running = repo_path
+                    if os.path.isdir(clone_path):
+                        st.warning(f"Directory {clone_path} already exists. Skipping clone.")
+                    else:
+                        if proxy_url:
+                            os.system(f"git config --global http.proxy {proxy_url}")
+                            os.system(f"git config --global https.proxy {proxy_url}")
+                            st.info(f"Using proxy: {proxy_url}")
+                        with st.spinner(f"Cloning repository from {clone_url}..."):
+                            kwargs = {}
+                            if branch_name:
+                                kwargs['branch'] = branch_name
+                            git.Repo.clone_from(clone_url, clone_path, **kwargs)
+                        st.success(f"Repository cloned successfully into {clone_path}")
+                        
+                        # --- Auto-select the cloned repo ---
+                        cloned_repos_list = [d for d in os.listdir("../workspace") if os.path.isdir(os.path.join("../workspace", d))]
+                        if repo_name in cloned_repos_list:
+                            st.session_state.selected_repo_index = cloned_repos_list.index(repo_name)
+                        st.rerun()
 
-                        # This logic handles "re-running" the docs server.
-                        # It also handles the case where the command *generates* the docs for the first time.
-                        if "documentation" in selected_command_name.lower():
-                            ra_path = os.path.join(repo_path, '_ra')
-                            if os.path.isdir(ra_path):
-                                st.info("Starting/Restarting documentation server...")
-                                # Assign a port to the repo if it doesn't have one
-                                if repo_path not in st.session_state.repo_ports:
-                                    st.session_state.repo_ports[repo_path] = st.session_state.next_port
-                                    st.session_state.next_port += 1
-                                repo_port = st.session_state.repo_ports[repo_path]
-                                start_docs_server(repo_path, repo_port)
-                                st.session_state.command_is_running = False # It's not a long-running fg task
+                except Exception as e:
+                    st.error(f"An error occurred during cloning: {e}")
+
+        # --- 2. List Cloned Repositories and Run Commands ---
+        st.header("Select the Repository")
+
+        workspace_path = "../workspace"
+        if os.path.exists(workspace_path) and os.path.isdir(workspace_path):
+            cloned_repos = [d for d in os.listdir(workspace_path) if os.path.isdir(os.path.join(workspace_path, d)) and not os.path.isfile(os.path.join(workspace_path, d, "usecase.md"))]
+            
+            if not cloned_repos:
+                st.info("No cloned repositories found in the workspace directory.")
+            else:
+                def on_repo_change():
+                    st.session_state.selected_repo = st.session_state.repo_selector
+                    cloned_repos = [d for d in os.listdir("../workspace") if os.path.isdir(os.path.join("../workspace", d)) and not os.path.isfile(os.path.join("../workspace", d, "usecase.md"))]
+                    if st.session_state.repo_selector in cloned_repos:
+                        st.session_state.selected_repo_index = cloned_repos.index(st.session_state.repo_selector)
+
+                # Use the index from session_state, then reset it
+                repo_index = st.session_state.get('selected_repo_index', 0)
+                st.selectbox(
+                    "Select a repository",
+                    cloned_repos,
+                    index=repo_index if repo_index < len(cloned_repos) else 0,
+                    key="repo_selector",
+                    on_change=on_repo_change
+                )
+                # The script will rerun on change, and the caption will be updated.
+                if 'repo_selector' in st.session_state:
+                    st.session_state.selected_repo = st.session_state.repo_selector
+
+        else:
+            st.warning("The 'workspace' directory does not exist.")
+
+    elif selected_tab == "Analysis":
+        selected_repo = st.session_state.get('selected_repo')
+
+        if st.session_state.get('last_analysis_status'):
+            status_info = st.session_state.last_analysis_status
+            if status_info['status'] == 'success':
+                st.success(status_info['message'])
+            elif status_info['status'] == 'error':
+                st.error(status_info['message'])
+            st.session_state.last_analysis_status = None # Clear after displaying
+
+        if selected_repo:
+            repo_path = os.path.join("../workspace", selected_repo)
+
+            # --- New: Command Execution Section ---
+            st.header("Run Analysis")
+            
+            # Load commands from commands.md and replace $REPOSITORY
+            command_map = {}
+            try:
+                with open("commands.md", 'r', encoding='utf-8') as f:
+                    relative_repo_path = os.path.join("workspace", selected_repo) + os.sep
+                    for line in f:
+                        if line.strip():
+                            parts = [p.strip() for p in line.strip().split(',', 2)]
+                            if len(parts) >= 2:
+                                name = parts[0]
+                                command_template = parts[1]
+                                output_file = parts[2] if len(parts) > 2 else None
+                                command = command_template.replace("$REPOSITORY", relative_repo_path)
+                                command_map[name] = (command, output_file)
+
+            except FileNotFoundError:
+                command_map["Error"] = ("echo 'commands.md not found'", None)
+            
+            if not command_map:
+                st.warning("No valid commands found in commands.md.")
+            else:
+                # Hide controls when a command is running
+                if not st.session_state.get('command_is_running'):
+                    selected_command_name = st.selectbox("Select an analysis to run", list(command_map.keys()))
+                    run_button = st.button("Run Analysis")
+
+                    # Check if docs server is already running for this repo
+                    repo_port = st.session_state.repo_ports.get(repo_path)
+                    if repo_port and repo_port in st.session_state.running_servers and st.session_state.running_servers[repo_port].poll() is None:
+                        st.success("Documentation server is running.")
+                        _, col, _ = st.columns([1, 2, 1])
+                        with col:
+                            st.link_button("View Documentation", url=f"http://localhost:{repo_port}", use_container_width=True)
+
+                    if run_button and selected_command_name:
+                        command_to_run, output_file = command_map[selected_command_name]
+
+                        should_run_command = True
+                        if output_file:
+                            report_file_path = os.path.join(repo_path, output_file)
+                            if os.path.exists(report_file_path):
+                                st.info(f"Report '{output_file}' already exists for this repository. Analysis not required.")
+                                should_run_command = False
+                        
+                        if should_run_command:
+                            logging.info(f"Starting analysis: {selected_command_name} on repo: {selected_repo}")
+
+                            # --- Start command execution state ---
+                            st.session_state.command_is_running = True
+                            st.session_state.command_log = f"$ Go get a coffee while the sentient toasters work their magic\n"
+                            st.session_state.command_q = queue.Queue()
+                            st.session_state.command_return_code = None
+                            st.session_state.selected_command_name_running = selected_command_name
+                            st.session_state.repo_path_running = repo_path
+                            st.session_state.target_entity_running = st.session_state.get('selected_repo')
+
+                            # This logic handles "re-running" the docs server.
+                            # It also handles the case where the command *generates* the docs for the first time.
+                            if "documentation" in selected_command_name.lower():
+                                ra_path = os.path.join(repo_path, '_ra')
+                                if os.path.isdir(ra_path):
+                                    st.info("Starting/Restarting documentation server...")
+                                    # Assign a port to the repo if it doesn't have one
+                                    if repo_path not in st.session_state.repo_ports:
+                                        st.session_state.repo_ports[repo_path] = st.session_state.next_port
+                                        st.session_state.next_port += 1
+                                    repo_port = st.session_state.repo_ports[repo_path]
+                                    start_docs_server(repo_path, repo_port)
+                                    st.session_state.command_is_running = False # It's not a long-running fg task
+                                else:
+                                    # Run the command to generate the docs first
+                                    st.info("Documentation not generated yet. Running generation command...")
+                                    process = subprocess.Popen(
+                                        command_to_run, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                        text=True, cwd='../', bufsize=1, universal_newlines=True, preexec_fn=os.setsid
+                                    )
+                                    st.session_state.current_process = process
+                                    thread = threading.Thread(target=run_command_in_thread, args=(process, st.session_state.command_q))
+                                    thread.daemon = True
+                                    thread.start()
+                                    st.session_state.command_thread = thread
                             else:
-                                # Run the command to generate the docs first
-                                st.info("Documentation not generated yet. Running generation command...")
                                 process = subprocess.Popen(
                                     command_to_run, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                     text=True, cwd='../', bufsize=1, universal_newlines=True, preexec_fn=os.setsid
@@ -401,75 +639,57 @@ elif selected_tab == "Analysis":
                                 thread.daemon = True
                                 thread.start()
                                 st.session_state.command_thread = thread
-                        else:
-                            process = subprocess.Popen(
-                                command_to_run, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                text=True, cwd='../', bufsize=1, universal_newlines=True, preexec_fn=os.setsid
-                            )
-                            st.session_state.current_process = process
-                            thread = threading.Thread(target=run_command_in_thread, args=(process, st.session_state.command_q))
-                            thread.daemon = True
-                            thread.start()
-                            st.session_state.command_thread = thread
 
-        # This block will now handle rendering the logs for a running command
-        if st.session_state.get('command_is_running'):
-            show_analysis_progress()
+            # This block will now handle rendering the logs for a running command
+            if st.session_state.get('command_is_running'):
+                show_analysis_progress()
 
-    else:
-        st.info("Please select a repository first.")
-
-elif selected_tab == "Results":
-    selected_repo = st.session_state.get('selected_repo')
-    if selected_repo:
-        repo_path = os.path.join("../workspace", selected_repo)
-        
-        # # --- Display Risk SVG if it exists ---
-        # risk_svg_path = os.path.join(repo_path, 'ra-risk.svg')
-        # if os.path.exists(risk_svg_path):
-        #     with open(risk_svg_path, "r") as f:
-        #         svg_content = f.read()
-        #     st.markdown(f"## Risk Graph")
-        #     st.markdown(f'<div style="text-align: center;">{svg_content}</div>', unsafe_allow_html=True)
-
-        # --- View Markdown Files ---
-        st.header("View Generated Reports")
-        
-        allowed_md_files = ["ra-overview.md", "ra-obsolescence.md", "ra-security.md", "ra-migrate.md","ra-risk.md"]
-        
-        report_names = ["Architecture Overview", "Obsolescence Risk Assessment", "Security Assessment","Cross-Language Migration","Risk Graph"]
-        
-        # Create mapping between report names and filenames
-        file_to_report_map = dict(zip(allowed_md_files, report_names))
-        report_to_file_map = dict(zip(report_names, allowed_md_files))
-        
-        md_files = [f for f in os.listdir(repo_path) if f in allowed_md_files]
-        
-        if not md_files:
-            st.info("No designated markdown files found in the root of this repository.")
         else:
-            # Get available report names for files that actually exist
-            available_report_names = [file_to_report_map[f] for f in md_files]
-            
-            selected_report_name = st.selectbox("Select a report to view", available_report_names)
-            if selected_report_name:
-                # Map the selected report name back to the actual filename
-                selected_md_file = report_to_file_map[selected_report_name]
-                md_path = os.path.join(repo_path, selected_md_file)
-                try:
-                    with open(md_path, 'r', encoding='utf-8') as f:
-                        md_content = f.read()
-                    
-                    # Split markdown by mermaid blocks and render accordingly
-                    parts = re.split(r"(```mermaid\n.*?\n```)", md_content, flags=re.DOTALL)
-                    for part in parts:
-                        if part.strip().startswith("```mermaid"):
-                            mermaid_code = part.strip().replace("```mermaid", "").replace("```", "")
-                            st_mermaid(mermaid_code)
-                        else:
-                            st.markdown(part, unsafe_allow_html=True)
+            st.info("Please select a repository first.")
 
-                except Exception as e:
-                    st.error(f"Error reading markdown file: {e}")
-    else:
-        st.info("Please select a repository first.")
+    elif selected_tab == "Results":
+        selected_repo = st.session_state.get('selected_repo')
+        if selected_repo:
+            repo_path = os.path.join("../workspace", selected_repo)
+            
+            # --- View Markdown Files ---
+            st.header("View Generated Reports")
+            
+            allowed_md_files = ["ra-overview.md", "ra-obsolescence.md", "ra-security.md", "ra-migrate.md","ra-risk.md"]
+            
+            report_names = ["Architecture Overview", "Obsolescence Risk Assessment", "Security Assessment","Cross-Language Migration","Risk Graph"]
+            
+            # Create mapping between report names and filenames
+            file_to_report_map = dict(zip(allowed_md_files, report_names))
+            report_to_file_map = dict(zip(report_names, allowed_md_files))
+            
+            md_files = [f for f in os.listdir(repo_path) if f in allowed_md_files]
+            
+            if not md_files:
+                st.info("No designated markdown files found in the root of this repository.")
+            else:
+                # Get available report names for files that actually exist
+                available_report_names = [file_to_report_map[f] for f in md_files]
+                
+                selected_report_name = st.selectbox("Select a report to view", available_report_names)
+                if selected_report_name:
+                    # Map the selected report name back to the actual filename
+                    selected_md_file = report_to_file_map[selected_report_name]
+                    md_path = os.path.join(repo_path, selected_md_file)
+                    try:
+                        with open(md_path, 'r', encoding='utf-8') as f:
+                            md_content = f.read()
+                        
+                        # Split markdown by mermaid blocks and render accordingly
+                        parts = re.split(r"(```mermaid\n.*?\n```)", md_content, flags=re.DOTALL)
+                        for part in parts:
+                            if part.strip().startswith("```mermaid"):
+                                mermaid_code = part.strip().replace("```mermaid", "").replace("```", "")
+                                st_mermaid(mermaid_code)
+                            else:
+                                st.markdown(part, unsafe_allow_html=True)
+
+                    except Exception as e:
+                        st.error(f"Error reading markdown file: {e}")
+        else:
+            st.info("Please select a repository first.")
